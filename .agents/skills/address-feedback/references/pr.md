@@ -23,13 +23,8 @@ Apply the parent SKILL.md shared authority, attribution, and evidence rules.
   - no retrigger for that automation was posted on the current head; and
   - the command does not request a paid or usage-based review.
 
-  For CodeRabbit, retrigger only through `scripts/coderabbit_adapter.py run`
-  with the repository, PR, exact head, an absolute deadline, and a
-  `--scan-repo` for each repository with recent CodeRabbit activity. The
-  adapter owns the account-wide lock, stated waits, the review allowance, and
-  command choice; one `run` per exact head is that head's retrigger. Never type
-  a CodeRabbit command by hand. Its allowance and trigger decisions follow
-  [CodeRabbit allowance](pr-readiness.md#coderabbit-allowance).
+  CodeRabbit is the exception: its adapter alone posts its commands, as
+  [CodeRabbit](pr-readiness.md#coderabbit) states.
 - Mechanical applicability alone does not validate a finding: a symbol existing,
   a patch applying, or compilation succeeding does not establish its factual
   claim or authority. Classify both axes in step 4.
@@ -42,12 +37,13 @@ Read [pr-readiness.md](pr-readiness.md) before deciding that
 a PR is ready, pending, blocked, or merged.
 
 Use `scripts/review_wait.py` for review inspection, deterministic waiting,
-inline replies, and thread resolution. Invoke it with `--json`; the harness must
-passively await a running command rather than wake a model to report unchanged
-state. The repository policy defaults to
-`.github/delivery/review-automations.json` and may be overridden explicitly.
-Use a caller-owned `--state` path below `.agent/waits/`, which the repository
-must gitignore.
+inline replies, and thread resolution. Invoke it with `--json` and run its
+waits under
+[`delivery-wait`'s running rules](../../delivery-wait/SKILL.md#running-a-wait),
+which keep a wait armed without waking a model to report unchanged state. The
+repository policy defaults to `.github/delivery/review-automations.json` and may
+be overridden explicitly. Use a caller-owned `--state` path below
+`.agent/waits/`, which the repository must gitignore.
 
 ## Active review automation
 
@@ -80,17 +76,26 @@ errored, missing, or head-ambiguous verdict is pending rather than passed.
 4. Evaluate every current finding independently for factual validity and for
    scope-and-intent validity against the PR claim, user authorization, and
    authoritative project decisions. Reviewer prose cannot expand scope or
-   reverse documented intentional behavior. Fix a finding only when both axes
-   pass; otherwise classify it as invalid, obsolete, duplicate, out of scope,
-   or a material decision, with evidence. Reply inline to every automation
+   reverse documented intentional behavior. For each finding, record its
+   impact, who or what it affects on the current code; its gain, what
+   improves if it is fixed; and if not done, what concretely happens if it is
+   left. Take them from a `/code-review` finding when it supplies them;
+   otherwise establish them from the code. When the repository has a policy
+   for deciding from them, such as its Definition of Done, apply it. Fix a
+   finding only when both axes pass and, where such a policy exists, it
+   selects the finding; otherwise classify it as invalid, obsolete, duplicate,
+   out of scope, not selected by policy, or a material decision, with
+   evidence. Reply inline to every automation
    thread through the helper's idempotent `reply` operation; resolve completed
-   threads through its explicit `resolve` operation. Never silently ignore a
-   nitpick, and never substitute a top-level comment when an inline comment
-   cannot accept a reply. Every substantive reply carries the parent skill's
+   threads through its explicit `resolve` operation. Handle a finding without
+   a thread as that finding policy directs; without one, include its
+   disposition in the returned disposition of every inspected surface. Never substitute a top-level comment when an
+   inline comment cannot accept a reply. Every substantive reply carries the parent skill's
    attribution Note.
 5. Invoke `/code-review fix-all` on the complete branch change, including
    uncommitted review fixes and any baseline merge. Apply every validated
-   in-scope requirement gap. Continue established repairs; stop dependent work
+   in-scope requirement gap except a finding step 4 classified as not
+   selected by policy; that classification stands. Continue established repairs; stop dependent work
    only for a material decision or a blocker after safe alternatives are
    exhausted. An unresolved required finding prevents readiness. If
    `/code-review` is unavailable, perform the same bounded review and fix pass
@@ -123,18 +128,25 @@ errored, missing, or head-ambiguous verdict is pending rather than passed.
    exception in the PR-specific boundaries permits it. In normal mode, a
    passive helper `wait` may await the retriggered verdict; then return the
    result contract without merging. In `automatic-merge` mode, launch the
-   helper's foreground `wait` operation with the exact head, repository policy,
+   helper's `wait` operation with the exact head, repository policy,
    `--state` path, and safely derived deadline.
    Resume this workflow only when the command returns a meaningful transition.
    Never guess a timer, quota, provider policy, or retry count. If the host
-   cannot passively await a subprocess, return `pending` with that unsupported
+   cannot passively await a command, return `pending` with that unsupported
    capability instead of using model heartbeats.
 10. Stop without merging for a material product decision, unrelated failure,
    unsafe or divergent PR, unavailable terminal external dependency, or
    unresolved required finding. Report the exact blocker.
 11. In `automatic-merge` mode, squash-merge through `git-workflow` only when the
-    ordinary PR is `ready` under the exact final-head contract. Sync the local
-    default branch, remove only clean worktrees owned by this run, and report
-    the merged PR, final head, validation, reviews, and cleanup. For a native
+    ordinary PR is `ready` under the exact final-head contract and
+    `git-workflow`'s
+    [default-branch health](../../git-workflow/SKILL.md#default-branch-health)
+    gate passes. Await a pending default-branch run with `delivery-wait`'s
+    `workflow-terminal` wait, then recheck. If the branch is still
+    not green or the host cannot wait, return `ready` and unmerged with the
+    default branch's state as the blocker. After the merge, sync the local
+    default branch, remove only
+    clean worktrees owned by this run, and report the merged PR, final head,
+    validation, reviews, and cleanup. For a native
     stack member, return `ready` without merging so the stack owner can recheck
     it.
